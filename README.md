@@ -1,36 +1,101 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# ✦ StarWatch
 
-## Getting Started
+**Never miss a sky event again.**
 
-First, run the development server:
+StarWatch is a personal astronomical event tracker that pulls public data from NASA, AstronomyAPI, and other trusted scientific sources to surface upcoming space events — eclipses, meteor showers, comets, planetary alignments, supermoons, ISS passes, space missions, and more.
+
+Sign in with Google, set your preferences and location, and receive personalized email notifications 1 week, 48 hours, and 4 hours before each event.
+
+---
+
+## Tech Stack
+
+| Layer | Choice |
+|---|---|
+| Framework | Next.js 16 (App Router) |
+| Database | PostgreSQL (Railway) |
+| ORM | Prisma 7 |
+| Auth | NextAuth.js v5 + Google OAuth |
+| Email | SendGrid |
+| Styling | Tailwind CSS + shadcn/ui |
+| Hosting | Railway |
+
+## Data Sources
+
+- [NASA API](https://api.nasa.gov/) — Near-Earth Objects, Space Weather (DONKI)
+- [AstronomyAPI](https://astronomyapi.com/) — Planetary events, supermoons
+- [Open-Notify](http://open-notify.org/) — ISS pass times
+- Hard-coded annual catalog — Meteor showers (Perseids, Leonids, Geminids, etc.)
+
+---
+
+## Local Development
+
+### Prerequisites
+
+- Node.js 20+
+- PostgreSQL (local or Railway)
+- Accounts for: Google Cloud Console, SendGrid, NASA API, AstronomyAPI
+
+### Setup
 
 ```bash
+# 1. Install dependencies
+npm install
+
+# 2. Copy env file and fill in values
+cp .env.example .env
+
+# 3. Generate Prisma client
+npx prisma generate
+
+# 4. Push schema to database
+npx prisma db push
+
+# 5. Start dev server
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### Required Environment Variables
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+See [`.env.example`](.env.example) for the full list with instructions.
 
-## Learn More
+---
 
-To learn more about Next.js, take a look at the following resources:
+## Project Structure
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```
+src/
+├── app/
+│   ├── (auth)/          # Sign-in page
+│   ├── onboarding/      # First-login preference setup
+│   ├── dashboard/        # Events dashboard
+│   ├── settings/         # Manage preferences
+│   └── api/
+│       ├── auth/         # NextAuth route handler
+│       ├── cron/         # Event seeding + notification dispatch
+│       └── email/        # Email preview (dev only)
+├── lib/
+│   ├── astro/            # Astronomical data fetchers
+│   ├── email/            # SendGrid helpers
+│   ├── db.ts             # Prisma client singleton
+│   └── auth.ts           # NextAuth config
+├── components/
+│   ├── ui/               # shadcn/ui base components
+│   ├── EventCard.tsx
+│   ├── PreferencesForm.tsx
+│   └── LocationPicker.tsx
+prisma/
+└── schema.prisma
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+---
 
-## Deploy on Vercel
+## Deployment (Railway)
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+1. Create a Railway project and provision a PostgreSQL database
+2. Add environment variables from `.env.example`
+3. Deploy — Railway auto-detects Next.js
+4. Add a Railway cron job: `GET /api/cron/notify` every hour with `Authorization: Bearer $CRON_SECRET`
