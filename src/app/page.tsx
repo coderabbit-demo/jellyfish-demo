@@ -15,12 +15,12 @@ export default function LandingPage() {
   return (
     <div className="flex flex-col min-h-full">
       {/* Nav */}
-      <nav className="flex items-center justify-between px-6 py-4 border-b border-white/10">
+      <nav className="flex items-center justify-between px-6 py-4 border-b border-border">
         <span className="text-xl font-bold tracking-tight">
           ✦ StarWatch
         </span>
         <Link href="/auth/signin">
-          <Button variant="outline" size="sm" className="border-white/20 text-white hover:bg-white/10">
+          <Button variant="outline" size="sm">
             Sign in
           </Button>
         </Link>
@@ -40,7 +40,7 @@ export default function LandingPage() {
           again
         </h1>
 
-        <p className="text-slate-400 text-lg sm:text-xl max-w-xl leading-relaxed">
+        <p className="text-muted-foreground text-lg sm:text-xl max-w-xl leading-relaxed">
           StarWatch tracks upcoming astronomical events and sends you
           personalized email reminders — 1 week, 48 hours, and 4 hours before
           each event.
@@ -57,7 +57,7 @@ export default function LandingPage() {
           {EVENT_TYPES.map(({ emoji, label }) => (
             <span
               key={label}
-              className="flex items-center gap-1.5 bg-white/5 border border-white/10 rounded-full px-4 py-1.5 text-sm text-slate-300"
+              className="flex items-center gap-1.5 bg-muted border border-border rounded-full px-4 py-1.5 text-sm text-muted-foreground"
             >
               {emoji} {label}
             </span>
@@ -66,7 +66,7 @@ export default function LandingPage() {
       </main>
 
       {/* Footer */}
-      <footer className="text-center text-slate-600 text-sm py-6 border-t border-white/5">
+      <footer className="text-center text-muted-foreground text-sm py-6 border-t border-border">
         StarWatch · Built with Next.js, Prisma, and public scientific APIs
       </footer>
     </div>
