@@ -1,0 +1,165 @@
+// Learn more about Prisma schema: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─── NextAuth Required Models ────────────────────────────────────────────────
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String  @map("user_id")
+  type              String
+  provider          String
+  providerAccountId String  @map("provider_account_id")
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@map("accounts")
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique @map("session_token")
+  userId       String   @map("user_id")
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+model VerificationToken {
+  identifier String
+  token      String
+  expires    DateTime
+
+  @@unique([identifier, token])
+  @@map("verification_tokens")
+}
+
+// ─── Application Models ───────────────────────────────────────────────────────
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String    @unique
+  emailVerified DateTime? @map("email_verified")
+  image         String?
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  // Location
+  locationCity  String?   @map("location_city")
+  locationLat   Float?    @map("location_lat")
+  locationLng   Float?    @map("location_lng")
+  timezone      String?   // e.g. "America/New_York"
+
+  // Onboarding state
+  onboardingComplete Boolean @default(false) @map("onboarding_complete")
+
+  accounts      Account[]
+  sessions      Session[]
+  preferences   Preferences?
+  notifications Notification[]
+
+  @@map("users")
+}
+
+model Preferences {
+  id     String @id @default(cuid())
+  userId String @unique @map("user_id")
+
+  // Event type subscriptions
+  solarSystem  Boolean @default(true)  @map("solar_system")   // Eclipses, alignments, conjunctions
+  nightSky     Boolean @default(true)  @map("night_sky")      // Meteor showers, comets, ISS, aurora
+  lunarEvents  Boolean @default(true)  @map("lunar_events")   // Supermoons + lunar eclipses only
+  deepSpace    Boolean @default(true)  @map("deep_space")     // NASA missions, launches, discoveries
+
+  // Notification lead times
+  notifyWeekBefore Boolean @default(true)  @map("notify_week_before")
+  notify48h        Boolean @default(true)  @map("notify_48h")
+  notify4h         Boolean @default(true)  @map("notify_4h")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt      @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("preferences")
+}
+
+enum EventType {
+  SOLAR_SYSTEM // Eclipses, planetary alignments, conjunctions, oppositions
+  NIGHT_SKY    // Meteor showers, comets, ISS passes, aurora alerts
+  LUNAR        // Supermoons, lunar eclipses
+  DEEP_SPACE   // NASA missions, space launches, telescope releases
+}
+
+model AstroEvent {
+  id          String    @id @default(cuid())
+  title       String
+  type        EventType
+  description String    @db.Text
+  source      String    // e.g. "NASA", "AstronomyAPI", "catalog"
+
+  startAt DateTime  @map("start_at")
+  endAt   DateTime? @map("end_at")
+
+  // JSON array of { label, url } objects
+  links Json @default("[]")
+
+  // Whether this event has location-specific visibility
+  isLocationSpecific Boolean @default(false) @map("is_location_specific")
+
+  // Deduplication key (e.g. "perseid-meteor-shower-2026")
+  slug String @unique
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt      @map("updated_at")
+
+  notifications Notification[]
+
+  @@index([startAt])
+  @@index([type])
+  @@map("astro_events")
+}
+
+enum NotificationStatus {
+  PENDING
+  SENT
+  FAILED
+  SKIPPED // user changed preferences, event no longer matches
+}
+
+model Notification {
+  id           String             @id @default(cuid())
+  userId       String             @map("user_id")
+  eventId      String             @map("event_id")
+  scheduledFor DateTime           @map("scheduled_for")
+  sentAt       DateTime?          @map("sent_at")
+  status       NotificationStatus @default(PENDING)
+  leadTime     String             // "7d" | "48h" | "4h"
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user  User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  event AstroEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, eventId, leadTime])
+  @@index([scheduledFor, status])
+  @@map("notifications")
+}
