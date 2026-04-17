@@ -71,6 +71,9 @@ export async function fetchIssPassEvents(
       return events;
     }
 
+    // Create a stable location identifier for slug uniqueness
+    const locationKey = `${lat.toFixed(4)}_${lng.toFixed(4)}`;
+
     for (const pass of data.passes.slice(0, passes)) {
       const startAt = new Date(pass.startUTC * 1000);
       const endAt = new Date(pass.endUTC * 1000);
@@ -79,13 +82,15 @@ export async function fetchIssPassEvents(
 
       const dateStr = startAt.toLocaleDateString("en-US", {
         month: "short", day: "numeric", year: "numeric",
+        timeZone: "UTC",
       });
       const timeStr = startAt.toLocaleTimeString("en-US", {
         hour: "2-digit", minute: "2-digit",
+        timeZone: "UTC",
       });
 
       events.push({
-        slug: `iss-pass-${pass.startUTC}`,
+        slug: `iss-pass-${locationKey}-${pass.startUTC}`,
         title: `ISS Pass Visible — ${dateStr} at ${timeStr}`,
         type: "NIGHT_SKY",
         description: `The International Space Station will be visible from your location on ${dateStr} at approximately ${timeStr}, lasting about ${durationMin} minute${durationMin !== 1 ? "s" : ""}. Maximum elevation: ${maxElevation}°. Look for a steady, fast-moving point of light crossing the sky — brighter than most stars. No telescope needed. The ISS orbits Earth at 28,000 km/h, completing a lap every 90 minutes, with a crew of up to 7 astronauts on board.`,
