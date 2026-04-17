@@ -82,19 +82,6 @@ export default async function DashboardPage() {
             ? `${totalUpcoming} event${totalUpcoming !== 1 ? "s" : ""} in the next 6 months matching your preferences`
             : "No events found — run the event seeder or check back soon"}
         </p>
-        {totalUpcoming === 0 && (
-          <p className="text-xs text-muted-foreground mt-1">
-            Tip: Trigger{" "}
-            <code className="bg-slate-800 px-1 rounded text-indigo-300">
-              GET /api/cron/seed-events
-            </code>{" "}
-            with your{" "}
-            <code className="bg-slate-800 px-1 rounded text-indigo-300">
-              CRON_SECRET
-            </code>{" "}
-            to populate the database.
-          </p>
-        )}
       </div>
 
       {/* Events grid with filter tabs */}
