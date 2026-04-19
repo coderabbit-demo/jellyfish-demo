@@ -96,6 +96,21 @@ prisma/
 ## Deployment (Railway)
 
 1. Create a Railway project and provision a PostgreSQL database
-2. Add environment variables from `.env.example`
-3. Deploy — Railway auto-detects Next.js
-4. Add a Railway cron job: `GET /api/cron/notify` every hour with `Authorization: Bearer $CRON_SECRET`
+2. Add all environment variables from `.env.example`
+3. Deploy — Railway auto-detects Next.js via `railway.json`
+
+### Cron Jobs (Railway Dashboard → Cron)
+
+| Job | Schedule | Command |
+|---|---|---|
+| Seed events | `0 2 * * *` (daily 2 AM) | `curl -H "Authorization: Bearer $CRON_SECRET" https://your-app.up.railway.app/api/cron/seed-events` |
+| Send notifications | `0 * * * *` (every hour) | `curl -H "Authorization: Bearer $CRON_SECRET" https://your-app.up.railway.app/api/cron/notify` |
+
+### First Run
+
+After deploying, manually trigger the event seeder once to populate the database:
+
+```bash
+curl -H "Authorization: Bearer YOUR_CRON_SECRET" \
+  https://your-app.up.railway.app/api/cron/seed-events
+```
