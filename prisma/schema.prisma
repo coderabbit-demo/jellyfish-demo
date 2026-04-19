@@ -140,6 +140,7 @@ model AstroEvent {
 
 enum NotificationStatus {
   PENDING
+  PROCESSING // claimed by a cron worker, being processed
   SENT
   FAILED
   SKIPPED // user changed preferences, event no longer matches

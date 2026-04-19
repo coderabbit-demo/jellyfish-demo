@@ -39,18 +39,16 @@ export async function sendNotification({
 
   const appUrl = process.env.NEXTAUTH_URL ?? "http://localhost:3000";
 
-  // Validate and normalize event.links to prevent unsafe data
-  let links: { label: string; url: string }[] = [];
+  // Validate and normalize event.links (Prisma Json field) to prevent unsafe data
+  const links: { label: string; url: string }[] = [];
   if (Array.isArray(event.links)) {
-    links = event.links
-      .filter((item): item is { label: unknown; url: unknown } =>
-        item !== null && typeof item === "object" && "label" in item && "url" in item
-      )
-      .map((item) => ({
-        label: typeof item.label === "string" ? item.label : String(item.label ?? ""),
-        url: typeof item.url === "string" ? item.url : String(item.url ?? ""),
-      }))
-      .filter((item) => item.label && item.url);
+    for (const item of event.links) {
+      if (item === null || typeof item !== "object" || Array.isArray(item)) continue;
+      const obj = item as Record<string, unknown>;
+      const label = typeof obj["label"] === "string" ? obj["label"] : "";
+      const url   = typeof obj["url"]   === "string" ? obj["url"]   : "";
+      if (label && url) links.push({ label, url });
+    }
   }
 
   const { subject, html, text } = renderEventEmail({
