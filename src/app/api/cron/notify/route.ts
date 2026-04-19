@@ -13,7 +13,10 @@ function isAuthorized(req: Request): boolean {
  * GET /api/cron/notify
  *
  * Finds all PENDING notifications whose scheduledFor time has passed,
- * sends the email for each, and marks them SENT or FAILED.
+ * atomically claims them (PENDING -> PROCESSING), sends the email for each,
+ * and marks them SENT, FAILED, or SKIPPED.
+ *
+ * The atomic claim prevents duplicate processing across overlapping cron runs.
  *
  * Designed to be called by a Railway cron job every hour.
  * Requires: Authorization: Bearer <CRON_SECRET>
@@ -25,25 +28,60 @@ export async function GET(req: Request) {
 
   const now = new Date();
 
-  // Fetch all due notifications in one query, with user + event data
-  const due = await db.notification.findMany({
+  // Step 1: Find all due notifications (just IDs)
+  const pending = await db.notification.findMany({
     where: {
-      status:      "PENDING",
+      status:       "PENDING",
       scheduledFor: { lte: now },
     },
-    include: {
-      user:  { select: { email: true, name: true } },
-      event: true,
-    },
+    select: { id: true },
     // Process in chronological order; cap batch at 100 per run to avoid timeout
     orderBy: { scheduledFor: "asc" },
     take: 100,
   });
 
+  if (pending.length === 0) {
+    return NextResponse.json({
+      ok:        true,
+      processed: 0,
+      sent:      0,
+      failed:    0,
+      skipped:   0,
+      ranAt:     now.toISOString(),
+    });
+  }
+
+  const pendingIds = pending.map((n) => n.id);
+
+  // Step 2: Atomically claim these notifications by updating PENDING -> PROCESSING
+  // Only rows that are still PENDING will be updated (wins the race)
+  const claimResult = await db.notification.updateMany({
+    where: {
+      id:     { in: pendingIds },
+      status: "PENDING",
+    },
+    data: {
+      status: "PROCESSING",
+    },
+  });
+
+  // Step 3: Fetch the notifications we actually claimed, with user + event data
+  const claimed = await db.notification.findMany({
+    where: {
+      id:     { in: pendingIds },
+      status: "PROCESSING",
+    },
+    include: {
+      user:  { select: { email: true, name: true } },
+      event: true,
+    },
+    orderBy: { scheduledFor: "asc" },
+  });
+
   let sent = 0;
   let failed = 0;
 
-  for (const notification of due) {
+  for (const notification of claimed) {
     // Double-check the event type still matches user preferences
     // (user may have changed preferences since notification was scheduled)
     const prefs = await db.preferences.findUnique({
@@ -103,10 +141,10 @@ export async function GET(req: Request) {
 
   return NextResponse.json({
     ok:        true,
-    processed: due.length,
+    processed: claimed.length,
     sent,
     failed,
-    skipped:   due.length - sent - failed,
+    skipped:   claimed.length - sent - failed,
     ranAt:     now.toISOString(),
   });
 }
