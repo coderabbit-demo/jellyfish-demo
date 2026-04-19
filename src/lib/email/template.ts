@@ -26,12 +26,57 @@ const LEAD_TIME_LABEL: Record<string, string> = {
   "4h":  "4 hours away",
 };
 
+/**
+ * Escape HTML special characters to prevent XSS injection
+ */
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+/**
+ * Sanitize URL to prevent javascript: and data: URI injection
+ */
+function sanitizeUrl(url: string): string | null {
+  try {
+    const parsed = new URL(url);
+    // Only allow http and https protocols
+    if (parsed.protocol === "http:" || parsed.protocol === "https:") {
+      return parsed.toString();
+    }
+    return null;
+  } catch {
+    // Invalid URL
+    return null;
+  }
+}
+
 export function renderEventEmail(data: TemplateData): { subject: string; html: string; text: string } {
   const accentColour = TYPE_COLOUR[data.eventType] ?? "#6366f1";
-  const leadLabel = LEAD_TIME_LABEL[data.leadTime] ?? data.leadTime;
+  const leadLabel = LEAD_TIME_LABEL[data.leadTime] ?? escapeHtml(data.leadTime);
 
-  const linksHtml = data.links.length > 0
-    ? data.links.map(
+  // Escape and sanitize dynamic content
+  const escapedEventTitle = escapeHtml(data.eventTitle);
+  const escapedEventDescription = escapeHtml(data.eventDescription);
+  const escapedEventEmoji = escapeHtml(data.eventEmoji);
+  const escapedEventDate = escapeHtml(data.eventDate);
+  const escapedEventType = escapeHtml(data.eventType);
+  const escapedLeadLabel = escapeHtml(leadLabel);
+
+  // Filter and sanitize links
+  const safeLinks = data.links
+    .map((l) => {
+      const sanitizedUrl = sanitizeUrl(l.url);
+      return sanitizedUrl ? { label: escapeHtml(l.label), url: sanitizedUrl } : null;
+    })
+    .filter((l): l is { label: string; url: string } => l !== null);
+
+  const linksHtml = safeLinks.length > 0
+    ? safeLinks.map(
         (l) =>
           `<a href="${l.url}" style="display:inline-block;margin:4px 6px 4px 0;padding:6px 14px;background:#1e293b;border:1px solid #334155;border-radius:6px;color:#818cf8;font-size:13px;text-decoration:none;">${l.label} ↗</a>`
       ).join("")
@@ -44,7 +89,11 @@ export function renderEventEmail(data: TemplateData): { subject: string; html: s
       </td></tr>`
     : "";
 
-  const subject = `${data.eventEmoji} ${data.eventTitle} — ${leadLabel}`;
+  const subject = `${escapedEventEmoji} ${escapedEventTitle} — ${escapedLeadLabel}`;
+
+  // Sanitize URLs used in the template
+  const sanitizedAppUrl = sanitizeUrl(data.appUrl) ?? "http://localhost:3000";
+  const sanitizedSettingsUrl = sanitizeUrl(data.settingsUrl) ?? sanitizedAppUrl;
 
   const html = `<!DOCTYPE html>
 <html lang="en">
@@ -74,7 +123,7 @@ export function renderEventEmail(data: TemplateData): { subject: string; html: s
         <tr>
           <td style="padding:20px 32px 0;">
             <span style="display:inline-block;padding:4px 12px;background:${accentColour}22;border:1px solid ${accentColour}55;border-radius:999px;font-size:12px;font-weight:600;color:${accentColour};text-transform:uppercase;letter-spacing:.06em;">
-              ${leadLabel}
+              ${escapedLeadLabel}
             </span>
           </td>
         </tr>
@@ -83,7 +132,7 @@ export function renderEventEmail(data: TemplateData): { subject: string; html: s
         <tr>
           <td style="padding:16px 32px 0;">
             <h1 style="margin:0;font-size:24px;font-weight:700;color:#f8fafc;line-height:1.3;">
-              ${data.eventEmoji} ${data.eventTitle}
+              ${escapedEventEmoji} ${escapedEventTitle}
             </h1>
           </td>
         </tr>
@@ -91,7 +140,7 @@ export function renderEventEmail(data: TemplateData): { subject: string; html: s
         <!-- Date -->
         <tr>
           <td style="padding:8px 32px 20px;">
-            <p style="margin:0;font-size:14px;color:#64748b;">📅 ${data.eventDate}</p>
+            <p style="margin:0;font-size:14px;color:#64748b;">📅 ${escapedEventDate}</p>
           </td>
         </tr>
 
@@ -105,7 +154,7 @@ export function renderEventEmail(data: TemplateData): { subject: string; html: s
         <!-- Description -->
         <tr>
           <td style="padding:0 32px 28px;">
-            <p style="margin:0;font-size:15px;line-height:1.7;color:#cbd5e1;">${data.eventDescription}</p>
+            <p style="margin:0;font-size:15px;line-height:1.7;color:#cbd5e1;">${escapedEventDescription}</p>
           </td>
         </tr>
 
@@ -115,7 +164,7 @@ export function renderEventEmail(data: TemplateData): { subject: string; html: s
         <!-- CTA button -->
         <tr>
           <td style="padding:0 32px 32px;">
-            <a href="${data.appUrl}/dashboard" style="display:inline-block;padding:12px 24px;background:#6366f1;border-radius:8px;color:#fff;font-size:14px;font-weight:600;text-decoration:none;">
+            <a href="${sanitizedAppUrl}/dashboard" style="display:inline-block;padding:12px 24px;background:#6366f1;border-radius:8px;color:#fff;font-size:14px;font-weight:600;text-decoration:none;">
               View all upcoming events →
             </a>
           </td>
@@ -125,9 +174,9 @@ export function renderEventEmail(data: TemplateData): { subject: string; html: s
         <tr>
           <td style="padding:20px 32px;border-top:1px solid #1e293b;background:#0f172a;">
             <p style="margin:0;font-size:12px;color:#475569;line-height:1.6;">
-              You're receiving this because you subscribed to <strong style="color:#64748b;">${data.eventType.replace("_", " ").toLowerCase()}</strong> events on StarWatch.<br />
-              <a href="${data.settingsUrl}" style="color:#6366f1;text-decoration:none;">Manage notification preferences</a> ·
-              <a href="${data.appUrl}" style="color:#6366f1;text-decoration:none;">Visit StarWatch</a>
+              You're receiving this because you subscribed to <strong style="color:#64748b;">${escapedEventType.replace("_", " ").toLowerCase()}</strong> events on StarWatch.<br />
+              <a href="${sanitizedSettingsUrl}" style="color:#6366f1;text-decoration:none;">Manage notification preferences</a> ·
+              <a href="${sanitizedAppUrl}" style="color:#6366f1;text-decoration:none;">Visit StarWatch</a>
             </p>
           </td>
         </tr>
@@ -144,12 +193,12 @@ ${data.eventDate}
 
 ${data.eventDescription}
 
-${data.links.map((l) => `${l.label}: ${l.url}`).join("\n")}
+${safeLinks.map((l) => `${l.label}: ${l.url}`).join("\n")}
 
-View all upcoming events: ${data.appUrl}/dashboard
+View all upcoming events: ${sanitizedAppUrl}/dashboard
 
 ---
-Manage notification preferences: ${data.settingsUrl}
+Manage notification preferences: ${sanitizedSettingsUrl}
 `;
 
   return { subject, html, text };

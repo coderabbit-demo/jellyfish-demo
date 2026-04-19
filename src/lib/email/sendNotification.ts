@@ -38,7 +38,20 @@ export async function sendNotification({
   sgMail.setApiKey(apiKey);
 
   const appUrl = process.env.NEXTAUTH_URL ?? "http://localhost:3000";
-  const links = event.links as { label: string; url: string }[];
+
+  // Validate and normalize event.links to prevent unsafe data
+  let links: { label: string; url: string }[] = [];
+  if (Array.isArray(event.links)) {
+    links = event.links
+      .filter((item): item is { label: unknown; url: unknown } =>
+        item !== null && typeof item === "object" && "label" in item && "url" in item
+      )
+      .map((item) => ({
+        label: typeof item.label === "string" ? item.label : String(item.label ?? ""),
+        url: typeof item.url === "string" ? item.url : String(item.url ?? ""),
+      }))
+      .filter((item) => item.label && item.url);
+  }
 
   const { subject, html, text } = renderEventEmail({
     userName:         user.name ?? "there",
