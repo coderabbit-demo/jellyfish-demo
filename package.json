@@ -5,7 +5,9 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "postbuild": "cp -r public .next/standalone/ && cp -r .next/static .next/standalone/.next/",
     "start": "next start",
+    "start:prod": "node .next/standalone/server.js",
     "lint": "eslint"
   },
   "dependencies": {
