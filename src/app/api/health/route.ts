@@ -17,10 +17,12 @@ export async function GET() {
       { status: 200 }
     );
   } catch (err) {
-    const message = err instanceof Error ? err.message : "unknown error";
+    console.error("[health] Database connectivity check failed:", err);
     return NextResponse.json(
-      { status: "error", db: "unreachable", message },
+      { status: "error", db: "unreachable" },
       { status: 503 }
+    );
+  }
     );
   }
 }
