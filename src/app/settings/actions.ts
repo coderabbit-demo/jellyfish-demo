@@ -42,77 +42,39 @@ const LEAD_OFFSETS: { leadTime: "7d" | "48h" | "4h"; ms: number }[] = [
   { leadTime: "4h",  ms: 4   * 3600_000 },
 ];
 
-/**
- * After preferences change, cancel stale notifications and create new ones
- * for events the user is now subscribed to.
- */
-async function regenerateNotifications(userId: string, prefs: SettingsData) {
-  const now = new Date();
-
-  // Cancel all future PENDING notifications for this user
-  await db.notification.updateMany({
-    where: {
-      userId,
-      status:      "PENDING",
-      scheduledFor: { gt: now },
-    },
-    data: { status: "SKIPPED" },
-  });
-
-  // Find upcoming events that match the user's new preferences
-  const activeTypes: EventType[] = [];
-  if (prefs.solarSystem) activeTypes.push("SOLAR_SYSTEM");
-  if (prefs.nightSky)    activeTypes.push("NIGHT_SKY");
-  if (prefs.lunarEvents) activeTypes.push("LUNAR");
-  if (prefs.deepSpace)   activeTypes.push("DEEP_SPACE");
-
-  if (activeTypes.length === 0) return;
-
-  const events = await db.astroEvent.findMany({
-    where: {
-      type:    { in: activeTypes },
-      startAt: { gt: now },
-    },
-    select: { id: true, type: true, startAt: true },
-  });
-
-  for (const event of events) {
-    for (const { leadTime, ms } of LEAD_OFFSETS) {
-      const prefKey = LEAD_TO_PREF[leadTime];
-      if (!prefs[prefKey]) continue;
-
-      const scheduledFor = new Date(event.startAt.getTime() - ms);
-      if (scheduledFor <= now) continue;
-
-      await db.notification.upsert({
-        where: {
-          userId_eventId_leadTime: { userId, eventId: event.id, leadTime },
-        },
-        create: {
-          userId,
-          eventId: event.id,
-          leadTime,
-          scheduledFor,
-          status: "PENDING",
-        },
-        update: {
-          scheduledFor,
-          status: "PENDING",
-          sentAt: null,
-        },
-      });
-    }
-  }
-}
-
 export async function saveSettings(data: SettingsData) {
   const session = await auth();
   if (!session?.user?.id) redirect("/auth/signin");
 
   const userId = session.user.id;
 
-  await db.$transaction([
-    db.user.update({
+  // Server-side validation
+  const hasEventType = data.solarSystem || data.nightSky || data.lunarEvents || data.deepSpace;
+  if (!hasEventType) {
+    throw new Error("At least one event type must be enabled");
+  }
+
+  const hasNotifyTime = data.notifyWeekBefore || data.notify48h || data.notify4h;
+  if (!hasNotifyTime) {
+    throw new Error("At least one notification time must be enabled");
+  }
+
+  if (data.locationLat != null && (typeof data.locationLat !== "number" || isNaN(data.locationLat) || data.locationLat < -90 || data.locationLat > 90)) {
+    throw new Error("Invalid latitude: must be a number between -90 and 90");
+  }
+
+  if (data.locationLng != null && (typeof data.locationLng !== "number" || isNaN(data.locationLng) || data.locationLng < -180 || data.locationLng > 180)) {
+    throw new Error("Invalid longitude: must be a number between -180 and 180");
+  }
+
+  if (data.timezone != null && (typeof data.timezone !== "string" || data.timezone.trim() === "")) {
+    throw new Error("Invalid timezone: must be a non-empty string");
+  }
+
+  // Perform all DB operations in a single atomic transaction
+  await db.$transaction(async (tx) => {
+    // Update user location and timezone
+    await tx.user.update({
       where: { id: userId },
       data: {
         locationCity: data.locationCity,
@@ -120,8 +82,10 @@ export async function saveSettings(data: SettingsData) {
         locationLng:  data.locationLng,
         timezone:     data.timezone,
       },
-    }),
-    db.preferences.upsert({
+    });
+
+    // Upsert preferences
+    await tx.preferences.upsert({
       where:  { userId },
       create: {
         userId,
@@ -142,11 +106,66 @@ export async function saveSettings(data: SettingsData) {
         notify48h:        data.notify48h,
         notify4h:         data.notify4h,
       },
-    }),
-  ]);
+    });
 
-  // Re-generate notifications to reflect new preferences
-  await regenerateNotifications(userId, data);
+    // Regenerate notifications within the same transaction
+    const now = new Date();
+
+    // Cancel all future PENDING notifications for this user
+    await tx.notification.updateMany({
+      where: {
+        userId,
+        status:      "PENDING",
+        scheduledFor: { gt: now },
+      },
+      data: { status: "SKIPPED" },
+    });
+
+    // Find upcoming events that match the user's new preferences
+    const activeTypes: EventType[] = [];
+    if (data.solarSystem) activeTypes.push("SOLAR_SYSTEM");
+    if (data.nightSky)    activeTypes.push("NIGHT_SKY");
+    if (data.lunarEvents) activeTypes.push("LUNAR");
+    if (data.deepSpace)   activeTypes.push("DEEP_SPACE");
+
+    if (activeTypes.length > 0) {
+      const events = await tx.astroEvent.findMany({
+        where: {
+          type:    { in: activeTypes },
+          startAt: { gt: now },
+        },
+        select: { id: true, type: true, startAt: true },
+      });
+
+      for (const event of events) {
+        for (const { leadTime, ms } of LEAD_OFFSETS) {
+          const prefKey = LEAD_TO_PREF[leadTime];
+          if (!data[prefKey]) continue;
+
+          const scheduledFor = new Date(event.startAt.getTime() - ms);
+          if (scheduledFor <= now) continue;
+
+          await tx.notification.upsert({
+            where: {
+              userId_eventId_leadTime: { userId, eventId: event.id, leadTime },
+            },
+            create: {
+              userId,
+              eventId: event.id,
+              leadTime,
+              scheduledFor,
+              status: "PENDING",
+            },
+            update: {
+              scheduledFor,
+              status: "PENDING",
+              sentAt: null,
+            },
+          });
+        }
+      }
+    }
+  });
 
   revalidatePath("/dashboard");
   revalidatePath("/settings");
